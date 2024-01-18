@@ -1,9 +1,14 @@
 """Data loading."""
 
 import json
-
 import numpy as np
 import pandas as pd
+import torch
+
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+
+
 
 
 def read_csv(csv_filename, meta_filename=None, header=True, discrete=None):
@@ -29,7 +34,6 @@ def read_csv(csv_filename, meta_filename=None, header=True, discrete=None):
         discrete_columns = []
 
     return data, discrete_columns
-
 
 def read_tsv(data_filename, meta_filename):
     """Read a tsv file."""
@@ -78,7 +82,6 @@ def read_tsv(data_filename, meta_filename):
 
     return np.asarray(data, dtype='float32'), meta['discrete_columns']
 
-
 def write_tsv(data, meta, output_filename):
     """Write to a tsv file."""
     with open(output_filename, 'w') as f:
@@ -92,3 +95,42 @@ def write_tsv(data, meta, output_filename):
                     print(meta['column_info'][idx][int(col)], end=' ', file=f)
 
             print(file=f)
+
+def data_loader(cvs_filename):
+        # Load the dataset
+        df = pd.read_csv(cvs_filename)
+
+        # Assuming the decision variable is 'income' and the protected attribute is 'sex'
+        # and 'sex' is binary coded as 0 or 1 for simplicity
+        features = df.drop(['income', 'sex'], axis=1)
+        decision = df['income']
+        protected_attr = df['sex']
+
+        # Preprocess the dataset
+        # Identify categorical and numerical columns
+        categorical_columns = features.select_dtypes(include=['object']).columns
+        numerical_columns = features.select_dtypes(include=['int64', 'float64']).columns
+
+        # Create a preprocessor with StandardScaler and OneHotEncoder
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', StandardScaler(), numerical_columns),
+                ('cat', OneHotEncoder(), categorical_columns)
+            ])
+
+        # Fit the preprocessor and transform the data
+        X = preprocessor.fit_transform(features)
+        Y = decision.apply(lambda x: 1 if x == '>50K' else 0).values
+        S = protected_attr.values
+
+        X = X.toarray()
+        S = protected_attr.map({' Male': 1, ' Female': 0}).values.astype(float)
+
+        # Convert the data to PyTorch tensors
+        X_tensor = torch.tensor(X, dtype=torch.float32)
+        # Y_tensor = torch.tensor(Y, dtype=torch.float32).unsqueeze(1)  # Add an extra dimension for Y
+        S_tensor = torch.tensor(S, dtype=torch.float32).unsqueeze(
+            1)  # Add an extra dimension for S
+
+        # the dataset in the [x, y, s] format ready to be used in a PyTorch model
+        return S_tensor[:500]
