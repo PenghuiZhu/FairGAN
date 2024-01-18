@@ -8,6 +8,7 @@ import torch
 from torch import optim
 from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional
 from tqdm import tqdm
+from torch import nn
 
 from ctgan.data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
@@ -57,25 +58,22 @@ class DiscriminatorD1(Module):
         return self.seq(input_.view(-1, self.pacdim))
 
 class DiscriminatorD2(Module):
-    """DiscriminatorD2 for ensuring fairness."""
-
-    def __init__(self, input_dim, discriminator_dim, pac=10):
+    def __init__(self, input_dim, hidden_dims, s_dim):
         super(DiscriminatorD2, self).__init__()
-        dim = input_dim * pac
-        self.pac = pac
-        self.pacdim = dim
-        seq = []
-        for item in list(discriminator_dim):
-            seq += [Linear(dim, item), LeakyReLU(0.2), Dropout(0.5)]
-            dim = item
+        # Define the architecture
+        # The input to D2 includes both the generated data and the protected attribute
+        self.model = nn.Sequential(
+            nn.Linear(input_dim + s_dim, hidden_dims[0]),
+            nn.LeakyReLU(0.2),
+            # Add more layers based on hidden_dims
+            nn.Linear(hidden_dims[-1], 1),
+            nn.Sigmoid()  # Assuming binary classification for fairness
+        )
 
-        seq += [Linear(dim, 1)]
-        self.seq = Sequential(*seq)
-
-    def forward(self, input_):
-        """Apply the DiscriminatorD1 to the `input_`."""
-        assert input_.size()[0] % self.pac == 0
-        return self.seq(input_.view(-1, self.pacdim))
+    def forward(self, x, s):
+        # Concatenate  generated data x and protected attribute s
+        combined_input = torch.cat([x, s], dim=1)
+        return self.model(combined_input)
 
 class Residual(Module):
     """Residual layer for the CTGAN."""
@@ -533,19 +531,22 @@ class CTGAN(BaseSynthesizer):
 
         return self._transformer.inverse_transform(data)
 
-    def fairness_ensure(self, synthetic_data):
-        discriminatorD2 = DiscriminatorD2()
+    def fairness_ensure(self, generated_data, protected_attri):
+        discriminatorD2 = DiscriminatorD2(generated_data, protected_attri)
         optimizerD2 = optim.Adam(
             discriminatorD2.parameters(), lr=self._discriminator_lr,
             betas=(0.5, 0.9), weight_decay=self._discriminator_decay
         )
+        loss_fn = nn.BCELoss
+
         optimizerD2.zero_grad()
-        real_pred = discriminatorD2(synthetic_data)
-        real_loss = loss_fn(real_pred, torch.ones_like(real_pred))
-        )
-        fake_pred = D1(fake_data.detach())
-        fake_loss = loss_fn(fake_pred, torch.zeros_like(fake_pred))
-        d2_loss = real_loss + fake_loss
+
+        pred = discriminatorD2(generated_data, protected_attri)
+
+        labels = protected_attri
+
+        d2_loss = loss_fn(pred, labels)
+
         d2_loss.backward()
         optimizerD2.step()
 
