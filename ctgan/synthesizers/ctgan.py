@@ -1,7 +1,6 @@
 """CTGAN module."""
 
 import warnings
-
 import numpy as np
 import pandas as pd
 import torch
@@ -57,23 +56,44 @@ class DiscriminatorD1(Module):
         assert input_.size()[0] % self.pac == 0
         return self.seq(input_.view(-1, self.pacdim))
 
-class DiscriminatorD2(Module):
-    def __init__(self, input_dim, hidden_dims, s_dim):
+class DiscriminatorD2(nn.Module):
+    def __init__(self, input_dim, protected_attr_dim, hidden_dims):
         super(DiscriminatorD2, self).__init__()
-        # Define the architecture
-        # The input to D2 includes both the generated data and the protected attribute
-        self.model = nn.Sequential(
-            nn.Linear(input_dim + s_dim, hidden_dims[0]),
+
+        # First part: Processing the combined input data and protected attribute
+        self.combined_input_layer = nn.Sequential(
+            nn.Linear(input_dim + protected_attr_dim, hidden_dims[0]),
             nn.LeakyReLU(0.2),
-            # Add more layers based on hidden_dims
-            nn.Linear(hidden_dims[-1], 1),
-            nn.Sigmoid()  # Assuming binary classification for fairness
+            nn.Dropout(0.3)
         )
 
-    def forward(self, x, s):
-        # Concatenate  generated data x and protected attribute s
-        combined_input = torch.cat([x, s], dim=1)
-        return self.model(combined_input)
+        # Second part: Further processing to make a decision on authenticity
+        self.authenticity_layers = nn.Sequential(
+            nn.Linear(hidden_dims[0], hidden_dims[1]),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dims[1], 1),
+            nn.Sigmoid()
+        )
+
+        # Third part: Further processing to classify based on the protected attribute
+        self.protection_layers = nn.Sequential(
+            nn.Linear(hidden_dims[0], hidden_dims[1]),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dims[1], 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x, protected_attr):
+        combined_input = torch.cat((x, protected_attr), dim=1)
+        combined_output = self.combined_input_layer(combined_input)
+
+        authenticity_decision = self.authenticity_layers(combined_output)
+        protection_decision = self.protection_layers(combined_output)
+
+        return authenticity_decision, protection_decision
+
 
 class Residual(Module):
     """Residual layer for the CTGAN."""
@@ -367,7 +387,7 @@ class CTGAN(BaseSynthesizer):
         "standard deviation, used for generate noise vector"
         std = mean + 1
 
-        self.loss_values = pd.DataFrame(columns=['Epoch', 'Generator Loss', 'Distriminator Loss'])
+        self.loss_values = pd.DataFrame(columns=['Epoch', 'Generator Loss', 'Discriminator Loss'])
         "tqdm is used for set a progress bar in loops."
         epoch_iterator = tqdm(range(epochs), disable=(not self._verbose))
         if self._verbose:
@@ -531,24 +551,35 @@ class CTGAN(BaseSynthesizer):
 
         return self._transformer.inverse_transform(data)
 
-    def fairness_ensure(self, generated_data, protected_attri):
-        discriminatorD2 = DiscriminatorD2(generated_data, protected_attri)
-        optimizerD2 = optim.Adam(
-            discriminatorD2.parameters(), lr=self._discriminator_lr,
-            betas=(0.5, 0.9), weight_decay=self._discriminator_decay
-        )
-        loss_fn = nn.BCELoss
+    def fairness_ensure(self, generated_data):
+        # Initialize Discriminator D2
+        discriminatorD2 = DiscriminatorD2(155, 2, [100, 50])
+        optimizerD2 = optim.Adam(discriminatorD2.parameters(), lr=self._discriminator_lr,
+                                 betas=(0.5, 0.9), weight_decay=self._discriminator_decay)
 
+        loss_fn = nn.BCELoss()
+
+        # Prepare the protected attribute tensor
+        protected_attri = generated_data['sex']
+        # binary protected attribute, encode as 0s and 1s
+        protected_attri_tensor = torch.tensor((protected_attri == 'Female').astype(int).values,
+                                              dtype=torch.float32).unsqueeze(1)
+
+        # Transform generated data
+        transformed_data = self._transformer.transform(generated_data)
+        generated_data_tensor = torch.tensor(transformed_data, dtype=torch.float32)
+
+        # Forward pass through D2
         optimizerD2.zero_grad()
+        _, protection_decision = discriminatorD2(generated_data_tensor, protected_attri_tensor)
 
-        pred = discriminatorD2(generated_data, protected_attri)
-
-        labels = protected_attri
-
-        d2_loss = loss_fn(pred, labels)
-
+        # Calculate loss and update D2
+        d2_loss = loss_fn(protection_decision, protected_attri_tensor)
         d2_loss.backward()
         optimizerD2.step()
+
+        return protection_decision
+
 
     def set_device(self, device):
         """Set the `device` to be used ('GPU' or 'CPU)."""
