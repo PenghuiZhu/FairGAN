@@ -17,10 +17,12 @@ discrete_columns = [
     'income'
 ]
 
-pd.set_option('display.max_row',1000)
-pd.set_option('display.max_columns',1000)
+pd.set_option('display.max_row', 1000)
+pd.set_option('display.max_columns', 1000)
 ctgan = CTGAN(epochs=10)
 ctgan.fit(real_data, discrete_columns)
 synthetic_data = ctgan.sample(n=10)
 fair_data = ctgan.fairness_ensure(synthetic_data)
-print(fair_data, type(fair_data), type(synthetic_data))
+
+print(fair_data)
+

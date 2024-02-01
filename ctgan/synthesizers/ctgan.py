@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import torch
+from sklearn import preprocessing
 from torch import optim
 from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional
 from tqdm import tqdm
@@ -14,6 +15,8 @@ from ctgan.data_transformer import DataTransformer
 from ctgan.synthesizers.base import BaseSynthesizer, random_state
 
 from ctgan.data import data_loader
+from sklearn.preprocessing import LabelEncoder
+
 class DiscriminatorD1(Module):
     """DiscriminatorD1 for the CTGAN."""
 
@@ -552,34 +555,40 @@ class CTGAN(BaseSynthesizer):
         return self._transformer.inverse_transform(data)
 
     def fairness_ensure(self, generated_data):
+
         # Initialize Discriminator D2
         discriminatorD2 = DiscriminatorD2(155, 2, [100, 50])
         optimizerD2 = optim.Adam(discriminatorD2.parameters(), lr=self._discriminator_lr,
                                  betas=(0.5, 0.9), weight_decay=self._discriminator_decay)
 
+        # Set loss function
         loss_fn = nn.BCELoss()
 
-        # Prepare the protected attribute tensor
-        protected_attri = generated_data['sex']
-        # binary protected attribute, encode as 0s and 1s
-        protected_attri_tensor = torch.tensor((protected_attri == 'Female').astype(int).values,
-                                              dtype=torch.float32).unsqueeze(1)
+        protection_decision = []
 
-        # Transform generated data
-        transformed_data = self._transformer.transform(generated_data)
-        generated_data_tensor = torch.tensor(transformed_data, dtype=torch.float32)
+        le = preprocessing.LabelEncoder()
+        for i in ['workclass', 'education', 'marital-status', 'occupation', 'relationship', 'race',
+                  'sex', 'native-country', 'income']:
+            generated_data[i] = le.fit_transform(generated_data[i].astype(str))
 
-        # Forward pass through D2
-        optimizerD2.zero_grad()
-        _, protection_decision = discriminatorD2(generated_data_tensor, protected_attri_tensor)
+        for index, row in generated_data.iterrows():
 
-        # Calculate loss and update D2
-        d2_loss = loss_fn(protection_decision, protected_attri_tensor)
-        d2_loss.backward()
-        optimizerD2.step()
+            # Convert to PyTorch tensor
+            protected_attr_tensor = torch.tensor([row['sex']],dtype=torch.float32).unsqueeze(0)  # Shape: [1, 1]
+            # Extract row data
+            row_data = row.drop('sex')  # Drop 'sex' column from row data
+            row_tensor = torch.tensor(row_data.values.astype(np.float32), dtype=torch.float32).unsqueeze(0)
+
+            # Forward pass through D2
+            optimizerD2.zero_grad()
+            protection_decision = discriminatorD2(row_tensor, protected_attr_tensor)
+
+            # Calculate loss and update D2
+            d2_loss = loss_fn(protection_decision, protected_attr_tensor)
+            d2_loss.backward()
+            optimizerD2.step()
 
         return protection_decision
-
 
     def set_device(self, device):
         """Set the `device` to be used ('GPU' or 'CPU)."""
