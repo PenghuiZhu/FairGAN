@@ -566,6 +566,7 @@ class CTGAN(BaseSynthesizer):
 
         protection_decision = []
 
+        # transform column to categorical attribute
         le = preprocessing.LabelEncoder()
         for i in ['workclass', 'education', 'marital-status', 'occupation', 'relationship', 'race',
                   'sex', 'native-country', 'income']:
@@ -574,10 +575,9 @@ class CTGAN(BaseSynthesizer):
         for index, row in generated_data.iterrows():
 
             # Convert to PyTorch tensor
-            protected_attr_tensor = torch.tensor([row['sex']],dtype=torch.float32).unsqueeze(0)  # Shape: [1, 1]
-            # Extract row data
-            row_data = row.drop('sex')  # Drop 'sex' column from row data
-            row_tensor = torch.tensor(row_data.values.astype(np.float32), dtype=torch.float32).unsqueeze(0)
+            protected_attr_tensor = torch.tensor([row['sex']], dtype=torch.float32).unsqueeze(0)
+            row_tensor = torch.tensor(row.drop(['sex']).values,
+                                      dtype=torch.float32).unsqueeze(0)
 
             # Forward pass through D2
             optimizerD2.zero_grad()
