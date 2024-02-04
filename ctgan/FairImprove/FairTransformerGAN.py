@@ -1,0 +1,325 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.model_selection import train_test_split
+import torch.nn.functional as F
+
+class FairTransformerGAN(nn.Module):
+    def __init__(self, dataType='binary', inputDim=58, embeddingDim=32, randomDim=32,
+                 generatorDims=(32, 32), discriminatorDims=(32, 16, 1), compressDims=(),
+                 decompressDims=(), bnDecay=0.99, l2scale=0.001, lambda_fair=1):
+        super(FairTransformerGAN, self).__init__()
+
+        # Model configuration
+        self.dataType = dataType
+        self.inputDim = inputDim
+        self.embeddingDim = embeddingDim
+        self.randomDim = randomDim
+        self.generatorDims = generatorDims
+        self.discriminatorDims = discriminatorDims
+        self.compressDims = compressDims
+        self.decompressDims = decompressDims
+        self.bnDecay = bnDecay
+        self.l2scale = l2scale
+        self.lambda_fair = lambda_fair
+
+        # Model components
+        self.generator = self.buildGenerator()
+        self.discriminator = self.buildDiscriminator()
+        self.autoencoder = self.buildAutoencoder()
+
+    def buildGenerator(self):
+        # Build and return the generator model
+        # The generator should take random noise and possibly other inputs, like labels, as input
+        pass
+
+    def buildDiscriminator(self):
+        # Build and return the discriminator model
+        # The discriminator should take data (real or generated) as input and output a validity score
+        pass
+
+    def buildAutoencoder(self):
+        # Build and return the autoencoder model
+        # The autoencoder is used for learning a compressed representation of the data
+        pass
+
+    def forward(self, x):
+        # Define the forward pass
+        pass
+
+    # Additional methods for training, data loading, etc., would be defined here
+
+# Note: This is a simplified and incomplete class outline. Implementing the methods to build the generator,
+# discriminator, and autoencoder models, as well as methods for training the model, applying the fairness constraint,
+# and evaluating the model, would require significant additional code.
+
+    def loadData(self, dataPath=''):
+        # Load the data from a NumPy file
+        data = np.load(dataPath)
+
+        # Assuming data structure: features (X), protected attributes (z), and targets (y)
+        X = data['X']  # Feature matrix
+        z = data['z']  # Protected attributes
+        y = data['y']  # Targets or labels
+
+        # Split the data into train and validation sets
+        trainX, validX, trainy, validy = train_test_split(X, y, test_size=0.2, random_state=42)
+        trainz, validz = train_test_split(z, test_size=0.2, random_state=42)
+
+        return trainX, validX, trainz, validz, trainy, validy
+
+# Example usage:
+# model = FairTransformerGAN()
+# trainX, validX, trainz, validz, trainy, validy = model.loadData(dataPath='path_to_your_data_file.npy')
+
+class Autoencoder(nn.Module):
+    def __init__(self, input_dim):
+        super(Autoencoder, self).__init__()
+        # Encoder layers
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 128),
+            nn.ReLU(True),
+            nn.Linear(128, 64),
+            nn.ReLU(True)
+        )
+        # Decoder layers
+        self.decoder = nn.Sequential(
+            nn.Linear(64, 128),
+            nn.ReLU(True),
+            nn.Linear(128, input_dim),
+            nn.Sigmoid()  # Assuming the input data is normalized between 0 and 1
+        )
+
+    def forward(self, x):
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
+
+
+def buildAutoencoder(x_input, input_dim):
+    model = Autoencoder(input_dim)
+    output = model(x_input)
+
+    # Assuming the use of MSE Loss for reconstruction
+    criterion = nn.MSELoss()
+    loss = criterion(output, x_input)
+
+    # Collecting weights and biases from the decoder
+    decodeVariables = {'weights': [], 'biases': []}
+    for layer in model.decoder:
+        if isinstance(layer, nn.Linear):
+            decodeVariables['weights'].append(layer.weight.data.numpy())
+            decodeVariables['biases'].append(layer.bias.data.numpy())
+
+    return loss, decodeVariables
+
+
+# Example usage:
+# Assume x_input is your input tensor with shape [batch_size, input_dim]
+# For demonstration, let's create a random tensor as input
+batch_size, input_dim = 64, 784  # Example input dimensions
+x_input = torch.randn(batch_size, input_dim)
+
+# Build the autoencoder and calculate loss
+loss, decodeVariables = buildAutoencoder(x_input, input_dim)
+print("Reconstruction Loss:", loss.item())
+# Printing out the first layer's weights and biases sizes for verification
+print("First layer weights size:", decodeVariables['weights'][0].shape)
+print("First layer biases size:", decodeVariables['biases'][0].shape)
+
+class Discriminator(nn.Module):
+    def __init__(self, input_dim, protected_dim, output_dim=1, hidden_dims=(32, 16)):
+        super(Discriminator, self).__init__()
+        # Initial input_dim adjustment to account for concatenated protected attributes
+        self.initial_layer = nn.Linear(input_dim + protected_dim, hidden_dims[0])
+        self.hidden_layers = nn.ModuleList(
+            [nn.Linear(hidden_dims[i], hidden_dims[i + 1]) for i in range(len(hidden_dims) - 1)]
+        )
+        self.output_layer = nn.Linear(hidden_dims[-1], output_dim)
+        self.dropout = nn.Dropout(p=0.2)  # Assuming keepRate of 0.8
+
+    def forward(self, x, y_bool, z_masks):
+        # Assuming y_bool is already concatenated to x if needed
+        # z_masks is a list of boolean masks for each protected attribute class
+        # In PyTorch, handling different masks might require adjusting input data before or during forward pass
+        x = torch.cat([x] + z_masks, dim=1)  # Concatenating masks directly, adjust based on actual use case
+        x = F.leaky_relu(self.initial_layer(x))
+        x = self.dropout(x)
+        for layer in self.hidden_layers:
+            x = F.leaky_relu(layer(x))
+            x = self.dropout(x)
+        return torch.sigmoid(self.output_layer(x))  # Assuming binary classification
+
+# Example instantiation and usage
+input_dim = 10  # Example input feature dimension
+protected_dim = 4  # Number of protected attribute classes
+discriminator = Discriminator(input_dim, protected_dim)
+
+# Example data
+x_real = torch.randn(64, input_dim)  # Batch size of 64
+y_real = torch.randint(0, 2, (64, 1)).float()  # Binary outcomes
+z_masks = [torch.randint(0, 2, (64, 1)).float() for _ in range(protected_dim)]  # Protected attribute masks
+
+# Forward pass
+predictions = discriminator(x_real, y_real, z_masks)
+print("Discriminator predictions shape:", predictions.shape)
+
+def print2file(buf, outFile):
+    """
+    Appends a given string to a log file.
+
+    Parameters:
+    - buf (str): The data to write to the file.
+    - outFile (str): The file path to append the data to.
+    """
+    with open(outFile, 'a') as file:  # Open the file in append mode
+        file.write(buf + '\n')  # Write the buffer with a newline character
+
+# Example usage:
+buf = "Epoch 1: Loss=0.45, Accuracy=85%"
+outFile = "/path/to/log.txt"
+print2file(buf, outFile)
+
+# This will append "Epoch 1: Loss=0.45, Accuracy=85%" to the file at /path/to/log.txt.
+def generateData(nSamples=100, modelFile='model.pth', batchSize=100, outFile='out.npy', p_z=[],
+                 p_y=[]):
+    """
+    Generates less-biased data using trained model and save to output path specified.
+
+    Parameters:
+    - nSamples (int): Size of entire original dataset.
+    - modelFile (str): Path to trained Fair Transformer GAN model.
+    - batchSize (int): Size of each batch.
+    - outFile (str): Path to generated data files in numpy format.
+    - p_z (list): Probability distribution of protected attribute.
+    - p_y (list): Probability distribution of outcome.
+    """
+
+    # Load the trained model
+    model = torch.load(modelFile)
+    model.eval()  # Set the model to evaluation mode
+
+    generated_data = []
+
+    with torch.no_grad():  # Disable gradient calculation for inference
+        for _ in range(0, nSamples, batchSize):
+            # Generate random inputs based on the distributions, if specified
+            z = torch.tensor(np.random.choice(p_z, size=(batchSize,)),
+                             dtype=torch.float32) if p_z else torch.randn(batchSize,
+                                                                          model.randomDim)
+            y = torch.tensor(np.random.choice(p_y, size=(batchSize,)),
+                             dtype=torch.float32) if p_y else torch.randn(batchSize,
+                                                                          model.randomDim)
+
+            # Generate data
+            fake_data = model.generate(z,
+                                       y)  # Adjust this method call based on your model's generate method signature
+
+            # Collect generated data
+            generated_data.append(fake_data.cpu().numpy())
+
+    # Concatenate and save generated data
+    generated_data_np = np.concatenate(generated_data, axis=0)
+    np.save(outFile, generated_data_np[:nSamples])  # Save only nSamples items
+
+
+# Example usage
+generateData(nSamples=1000, modelFile='path_to_trained_model.pth', batchSize=100,
+             outFile='generated_data.npy')
+
+def calculateDiscAuc(preds_real, preds_fake):
+    """
+    Calculates discriminator AUC from real and fake predictions.
+    """
+    # Combine the predictions
+    preds = np.concatenate([preds_real, preds_fake])
+    # Create labels: 1 for real, 0 for fake
+    labels = np.concatenate([np.ones_like(preds_real), np.zeros_like(preds_fake)])
+    # Calculate AUC
+    auc = roc_auc_score(labels, preds)
+    return auc
+
+def calculateDiscAccuracy(preds_real, preds_fake):
+    """
+    Calculates discriminator accuracy from real and fake predictions.
+    """
+    # Threshold predictions at 0.5
+    preds_binary = np.concatenate([preds_real, preds_fake]) > 0.5
+    labels = np.concatenate([np.ones_like(preds_real), np.zeros_like(preds_fake)])
+    # Calculate accuracy
+    acc = accuracy_score(labels, preds_binary)
+    return acc
+
+def calculateGenAccuracy(preds_real, preds_fake):
+    """
+    Calculates generator accuracy from real and fake predictions.
+    The generator is considered accurate if the discriminator classifies
+    its outputs (fake data) as real.
+    """
+    # For generator accuracy, we only consider the fake predictions
+    # and how often the discriminator is fooled (i.e., predicts real for fake inputs)
+    preds_binary = preds_fake > 0.5
+    labels = np.ones_like(preds_fake)  # Generator aims for these to be classified as real
+    acc = accuracy_score(labels, preds_binary)
+    return acc
+
+# Example usage
+# preds_real and preds_fake should be numpy arrays containing the discriminator's
+# confidence scores for real and fake data, respectively.
+preds_real = np.random.uniform(low=0.8, high=1.0, size=100)  # Simulated predictions for real data
+preds_fake = np.random.uniform(low=0.0, high=0.2, size=100)  # Simulated predictions for fake data
+
+auc = calculateDiscAuc(preds_real, preds_fake)
+disc_acc = calculateDiscAccuracy(preds_real, preds_fake)
+gen_acc = calculateGenAccuracy(preds_real, preds_fake)
+
+print(f"Discriminator AUC: {auc}")
+print(f"Discriminator Accuracy: {disc_acc}")
+print(f"Generator Accuracy: {gen_acc}")
+
+def pair_rd(y_real, z_real):
+    """
+    Helper function to calculate total pairwise risk difference across all z protected attribute classes.
+    """
+    unique_classes = torch.unique(z_real)
+    rd_sum = 0
+    for i in unique_classes:
+        for j in unique_classes:
+            if i != j:
+                y_i = y_real[z_real == i]
+                y_j = y_real[z_real == j]
+                rd_sum += abs(y_i.mean() - y_j.mean())
+    return rd_sum / (len(unique_classes) * (len(unique_classes) - 1))
+
+def calculateRD(y_real, z_real):
+    """
+    Calculates risk difference score across all z protected attribute classes during training.
+    """
+    risk_diff = pair_rd(y_real, z_real)
+    return risk_diff
+
+def calculateClassifierAccuracy(preds_real, y_real):
+    """
+    Calculates classifier accuracy between real y outcome and predicted y.
+    """
+    correct = (preds_real.round() == y_real).float()
+    acc = correct.mean()
+    return acc.item()
+
+def calculateClassifierRD(preds_real, z_real, y_real):
+    """
+    Calculate classifier risk difference score across all z protected attribute classes during training.
+    """
+    rd = pair_rd(y_real, z_real)
+    return rd
+
+def create_z_masks(z_arr):
+    """
+    Create a z_mask for each class (max 5) of protected attribute in z array.
+    """
+    masks = []
+    for val in torch.unique(z_arr):
+        masks.append((z_arr == val).float())
+    return masks

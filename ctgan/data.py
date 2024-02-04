@@ -93,23 +93,6 @@ def write_tsv(data, meta, output_filename):
 
             print(file=f)
 
-def data_loader(cvs_filename):
-    # Load the dataset
-    df = pd.read_csv(cvs_filename)
 
-    # Assuming the decision variable is 'income' and the protected attribute is 'sex'
-    # and 'sex' is binary coded as 0 or 1 for simplicity
-    protected_attr = 'sex'
-
-    # Process the 'sex' column (assuming binary values)
-    df[protected_attr] = (df[protected_attr] == 'Female').astype(int)
-
-    # Process 'income' as a binary decision
-    df['income'] = (df['income'] == '>50K').astype(int)
-
-    # Convert processed data to PyTorch tensors
-    protected_attr_tensor = torch.tensor(df[protected_attr].values, dtype=torch.float32).unsqueeze(1)
-    # ready to be used in a PyTorch model
-    return protected_attr_tensor[:500]
 
 

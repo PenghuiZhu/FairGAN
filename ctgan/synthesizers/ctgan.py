@@ -88,8 +88,8 @@ class DiscriminatorD2(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x, protected_attr):
-        combined_input = torch.cat((x, protected_attr), dim=1)
+    def forward(self, generated_data, protected_attr):
+        combined_input = torch.cat((generated_data, protected_attr), dim=1)
         combined_output = self.combined_input_layer(combined_input)
 
         authenticity_decision = self.authenticity_layers(combined_output)
@@ -553,42 +553,6 @@ class CTGAN(BaseSynthesizer):
         data = data[:n]
 
         return self._transformer.inverse_transform(data)
-
-    def fairness_ensure(self, generated_data):
-
-        # Initialize Discriminator D2
-        discriminatorD2 = DiscriminatorD2(155, 2, [100, 50])
-        optimizerD2 = optim.Adam(discriminatorD2.parameters(), lr=self._discriminator_lr,
-                                 betas=(0.5, 0.9), weight_decay=self._discriminator_decay)
-
-        # Set loss function
-        loss_fn = nn.BCELoss()
-
-        protection_decision = []
-
-        # transform column to categorical attribute
-        le = preprocessing.LabelEncoder()
-        for i in ['workclass', 'education', 'marital-status', 'occupation', 'relationship', 'race',
-                  'sex', 'native-country', 'income']:
-            generated_data[i] = le.fit_transform(generated_data[i].astype(str))
-
-        for index, row in generated_data.iterrows():
-
-            # Convert to PyTorch tensor
-            protected_attr_tensor = torch.tensor([row['sex']], dtype=torch.float32).unsqueeze(0)
-            row_tensor = torch.tensor(row.drop(['sex']).values,
-                                      dtype=torch.float32).unsqueeze(0)
-
-            # Forward pass through D2
-            optimizerD2.zero_grad()
-            protection_decision = discriminatorD2(row_tensor, protected_attr_tensor)
-
-            # Calculate loss and update D2
-            d2_loss = loss_fn(protection_decision, protected_attr_tensor)
-            d2_loss.backward()
-            optimizerD2.step()
-
-        return protection_decision
 
     def set_device(self, device):
         """Set the `device` to be used ('GPU' or 'CPU)."""

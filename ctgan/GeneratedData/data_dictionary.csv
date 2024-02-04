@@ -1,0 +1,16 @@
+Column,Type
+age,float64
+workclass,object
+fnlwgt,float64
+education,object
+education-num,float64
+marital-status,object
+occupation,object
+relationship,object
+race,object
+sex,float64
+capital-gain,float64
+capital-loss,float64
+hours-per-week,float64
+native-country,object
+income,object
