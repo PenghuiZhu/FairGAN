@@ -7,6 +7,9 @@ from sklearn.metrics import accuracy_score
 import numpy as np
 import pandas as pd
 
+from ctgan import CTGAN, load_demo
+
+
 class Classifier:
     def __init__(self, test_size=0.2, random_seed=42):
         self.test_size = test_size
@@ -67,3 +70,38 @@ class Classifier:
         y_pred = clf.predict(X_real)
 
         return X_real, y_real.values, y_pred
+
+
+# Initialize Classifier
+classifier = Classifier()
+
+real_data = load_demo()
+# Names of the columns that are discrete
+discrete_columns = [
+    'workclass',
+    'education',
+    'marital-status',
+    'occupation',
+    'relationship',
+    'race',
+    'sex',
+    'native-country',
+    'income'
+]
+
+pd.set_option('display.max_row', 1000)
+pd.set_option('display.max_columns', 1000)
+ctgan = CTGAN(epochs=10)
+ctgan.fit(real_data, discrete_columns)
+synthetic_data = ctgan.sample(n=10)
+
+df = synthetic_data
+df_real = pd.read_csv('/Users/penghuizhu/Desktop/Workspace/FairGAN/examples/csv/adult.csv')
+
+# Train logistic regression and get predictions
+X_real_lr, y_real_lr, y_pred_lr = classifier.logistic_regression(df, df_real)
+print("Logistic Regression Predictions:", y_pred_lr)
+
+# Train random forest and get predictions
+X_real_rf, y_real_rf, y_pred_rf = classifier.random_forest(df, df_real)
+print("Random Forest Predictions:", y_pred_rf)

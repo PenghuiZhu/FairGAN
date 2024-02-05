@@ -1,10 +1,14 @@
-import torch
+
 import torch.nn as nn
-import torch.optim as optim
-import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 import torch.nn.functional as F
+import torch
+import numpy as np
+from torch.utils.data import DataLoader, TensorDataset
+from torch.optim import Adam
+from pathlib import Path
+
 
 class FairTransformerGAN(nn.Module):
     def __init__(self, dataType='binary', inputDim=58, embeddingDim=32, randomDim=32,
@@ -30,39 +34,14 @@ class FairTransformerGAN(nn.Module):
         self.discriminator = self.buildDiscriminator()
         self.autoencoder = self.buildAutoencoder()
 
-    def buildGenerator(self):
-        # Build and return the generator model
-        # The generator should take random noise and possibly other inputs, like labels, as input
-        pass
-
-    def buildDiscriminator(self):
-        # Build and return the discriminator model
-        # The discriminator should take data (real or generated) as input and output a validity score
-        pass
-
-    def buildAutoencoder(self):
-        # Build and return the autoencoder model
-        # The autoencoder is used for learning a compressed representation of the data
-        pass
-
-    def forward(self, x):
-        # Define the forward pass
-        pass
-
-    # Additional methods for training, data loading, etc., would be defined here
-
-# Note: This is a simplified and incomplete class outline. Implementing the methods to build the generator,
-# discriminator, and autoencoder models, as well as methods for training the model, applying the fairness constraint,
-# and evaluating the model, would require significant additional code.
-
-    def loadData(self, dataPath=''):
+    def loadData(self, dataPath='/Users/penghuizhu/Desktop/Workspace/FairGAN/examples/csv/adult.csv'):
         # Load the data from a NumPy file
         data = np.load(dataPath)
 
         # Assuming data structure: features (X), protected attributes (z), and targets (y)
-        X = data['X']  # Feature matrix
-        z = data['z']  # Protected attributes
-        y = data['y']  # Targets or labels
+        X = data['age','workclass','fnlwgt','education','education-num','marital-status','occupation','relationship','race','sex','capital-gain','capital-loss','hours-per-week','native-country','income']   # Feature matrix
+        z = data['sex']  # Protected attributes
+        y = data['income'] # Targets or labels
 
         # Split the data into train and validation sets
         trainX, validX, trainy, validy = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -179,7 +158,7 @@ def print2file(buf, outFile):
 
 # Example usage:
 buf = "Epoch 1: Loss=0.45, Accuracy=85%"
-outFile = "/path/to/log.txt"
+outFile = "/Users/penghuizhu/Desktop/Workspace/FairGAN/ctgan/GeneratedData/test.txt"
 print2file(buf, outFile)
 
 # This will append "Epoch 1: Loss=0.45, Accuracy=85%" to the file at /path/to/log.txt.
@@ -214,8 +193,7 @@ def generateData(nSamples=100, modelFile='model.pth', batchSize=100, outFile='ou
                                                                           model.randomDim)
 
             # Generate data
-            fake_data = model.generate(z,
-                                       y)  # Adjust this method call based on your model's generate method signature
+            fake_data = model.generate(z, y)  # Adjust this method call based on your model's generate method signature
 
             # Collect generated data
             generated_data.append(fake_data.cpu().numpy())
@@ -226,7 +204,7 @@ def generateData(nSamples=100, modelFile='model.pth', batchSize=100, outFile='ou
 
 
 # Example usage
-generateData(nSamples=1000, modelFile='path_to_trained_model.pth', batchSize=100,
+generateData(nSamples=1000, modelFile='model.pth', batchSize=100,
              outFile='generated_data.npy')
 
 def calculateDiscAuc(preds_real, preds_fake):
@@ -323,3 +301,92 @@ def create_z_masks(z_arr):
     for val in torch.unique(z_arr):
         masks.append((z_arr == val).float())
     return masks
+
+
+def train_fair_transformer_gan(
+    dataPath,
+    outPath,
+    nEpochs=100,
+    discriminatorTrainPeriod=1,
+    generatorTrainPeriod=1,
+    pretrainBatchSize=100,
+    batchSize=100,
+    pretrainEpochs=10,
+    saveMaxKeep=5,
+    p_z=None,
+    p_y=None,
+    modelPath=None
+):
+    # Ensure output path exists
+    Path(outPath).mkdir(parents=True, exist_ok=True)
+
+    # Load data
+    data = np.load(dataPath)
+    X = data['X']  # Assuming 'X' key for features
+    z = data['sex']  # Assuming 'z' key for protected attributes
+    y = data['y']  # Assuming 'y' key for outcomes
+
+    # Convert to PyTorch tensors
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    z_tensor = torch.tensor(z, dtype=torch.float32)
+    y_tensor = torch.tensor(y, dtype=torch.float32)
+
+    # Create datasets and dataloaders
+    dataset = TensorDataset(X_tensor, z_tensor, y_tensor)
+    dataloader = DataLoader(dataset, batch_size=batchSize, shuffle=True)
+
+    # Initialize the model
+    model = FairTransformerGAN(...)  # Add required arguments
+
+    if modelPath:
+        model.load_state_dict(torch.load(modelPath))
+
+    # Move model to device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
+
+    # Optimizers
+    optimizerD = Adam(model.discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    optimizerG = Adam(model.generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+
+    # Training loop
+    for epoch in range(nEpochs):
+        for i, (X_batch, z_batch, y_batch) in enumerate(dataloader):
+            # Move data to device
+            X_batch, z_batch, y_batch = X_batch.to(device), z_batch.to(device), y_batch.to(device)
+
+            # Discriminator training
+            for _ in range(discriminatorTrainPeriod):
+                optimizerD.zero_grad()
+                # Implement discriminator training steps
+                # lossD.backward()
+                optimizerD.step()
+
+            # Generator training
+            for _ in range(generatorTrainPeriod):
+                optimizerG.zero_grad()
+                # Implement generator training steps
+                # lossG.backward()
+                optimizerG.step()
+
+        # Optionally save models periodically
+        if epoch % saveMaxKeep == 0:
+            torch.save(model.state_dict(), f"{outPath}/model_epoch_{epoch}.pth")
+
+    # Save final model
+    torch.save(model.state_dict(), f"{outPath}/model_final.pth")
+
+    print("Training complete.")
+
+# Example usage:
+train_fair_transformer_gan(
+    dataPath='/Users/penghuizhu/Desktop/Workspace/FairGAN/examples/csv/adult.csv',
+    outPath='path/to/save/models/',
+    nEpochs=100,
+    discriminatorTrainPeriod=1,
+    generatorTrainPeriod=1,
+    pretrainBatchSize=100,
+    batchSize=100,
+    pretrainEpochs=10,
+    saveMaxKeep=5
+)

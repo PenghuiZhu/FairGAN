@@ -3,9 +3,13 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 
+from ctgan import CTGAN, load_demo
+
+
 class Metrics:
-    def __init__(self):
-        pass
+
+    # def __init__(self, mandatory_param, optional_param1='default1', optional_param2=None):
+    #     pass
 
     def binary_fair_data_generation_metrics(self, df, protected_attr, target_attr):
         """
@@ -50,3 +54,34 @@ class Metrics:
 
         metrics_dict = {"Accuracy": acc, "F1 Score": f1}
         return metrics_dict
+
+metrics = Metrics()
+real_data = load_demo()
+# Names of the columns that are discrete
+discrete_columns = [
+    'workclass',
+    'education',
+    'marital-status',
+    'occupation',
+    'relationship',
+    'race',
+    'sex',
+    'native-country',
+    'income'
+]
+
+pd.set_option('display.max_row', 1000)
+pd.set_option('display.max_columns', 1000)
+ctgan = CTGAN(epochs=10)
+ctgan.fit(real_data, discrete_columns)
+synthetic_data = ctgan.sample(n=10)
+
+df_synthetic = synthetic_data  # Your synthetic DataFrame
+df_real = pd.read_csv('/Users/penghuizhu/Desktop/Workspace/FairGAN/examples/csv/adult.csv')  # Your real DataFrame
+protected_attr = 'sex'  # Example protected attribute column name
+target_attr = 'income'  # Example target/outcome column name
+
+fairness_metrics = metrics.binary_fair_data_generation_metrics(df_synthetic, protected_attr, target_attr)
+print(fairness_metrics)
+distance_metrics = metrics.euclidean_distance(df_synthetic, df_real)
+print(distance_metrics)

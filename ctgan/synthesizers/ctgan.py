@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import torch
-from sklearn import preprocessing
+
 from torch import optim
 from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional
 from tqdm import tqdm
@@ -14,8 +14,6 @@ from ctgan.data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
 from ctgan.synthesizers.base import BaseSynthesizer, random_state
 
-from ctgan.data import data_loader
-from sklearn.preprocessing import LabelEncoder
 
 class DiscriminatorD1(Module):
     """DiscriminatorD1 for the CTGAN."""
@@ -59,45 +57,6 @@ class DiscriminatorD1(Module):
         assert input_.size()[0] % self.pac == 0
         return self.seq(input_.view(-1, self.pacdim))
 
-class DiscriminatorD2(nn.Module):
-    def __init__(self, input_dim, protected_attr_dim, hidden_dims):
-        super(DiscriminatorD2, self).__init__()
-
-        # First part: Processing the combined input data and protected attribute
-        self.combined_input_layer = nn.Sequential(
-            nn.Linear(input_dim + protected_attr_dim, hidden_dims[0]),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3)
-        )
-
-        # Second part: Further processing to make a decision on authenticity
-        self.authenticity_layers = nn.Sequential(
-            nn.Linear(hidden_dims[0], hidden_dims[1]),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_dims[1], 1),
-            nn.Sigmoid()
-        )
-
-        # Third part: Further processing to classify based on the protected attribute
-        self.protection_layers = nn.Sequential(
-            nn.Linear(hidden_dims[0], hidden_dims[1]),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_dims[1], 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, generated_data, protected_attr):
-        combined_input = torch.cat((generated_data, protected_attr), dim=1)
-        combined_output = self.combined_input_layer(combined_input)
-
-        authenticity_decision = self.authenticity_layers(combined_output)
-        protection_decision = self.protection_layers(combined_output)
-
-        return authenticity_decision, protection_decision
-
-
 class Residual(Module):
     """Residual layer for the CTGAN."""
 
@@ -116,31 +75,21 @@ class Residual(Module):
 
 class Generator(Module):
     """Generator for the CTGAN."""
-    def __init__(self, embedding_dim, generator_dim, data_dim, dim_s):
+
+    def __init__(self, embedding_dim, generator_dim, data_dim):
         super(Generator, self).__init__()
-        dim_z = embedding_dim
-        input_dim = dim_z + dim_s  # Adjusted input dimension
+        dim = embedding_dim
         seq = []
-        dim = input_dim
-        for item in generator_dim:
-            seq.append(Residual(dim, item))
+        for item in list(generator_dim):
+            seq += [Residual(dim, item)]
             dim += item
         seq.append(Linear(dim, data_dim))
         self.seq = Sequential(*seq)
 
-    def forward(self, z, s):
-        """
-        Forward pass through the Generator.
-
-        Args:
-            z (Tensor): Noise vector with dimension dim_z.
-            s (Tensor): Protected attribute with dimension dim_s.
-
-        Returns:
-            Tensor: Generated pair (x̂, ŷ).
-        """
-        combined_input = torch.cat([z, s], dim=1)
-        return self.seq(combined_input)
+    def forward(self, input_):
+        """Apply the Generator to the `input_`."""
+        data = self.seq(input_)
+        return data
 
 class CTGAN(BaseSynthesizer):
     """Conditional Table GAN Synthesizer.
@@ -367,7 +316,6 @@ class CTGAN(BaseSynthesizer):
             self._embedding_dim + self._data_sampler.dim_cond_vec(),
             self._generator_dim,
             data_dim,
-            1
         ).to(self._device)
 
         discriminatorD1 = DiscriminatorD1(
@@ -420,9 +368,7 @@ class CTGAN(BaseSynthesizer):
                             self._batch_size, col[perm], opt[perm])
                         c2 = c1[perm]
 
-                    protected_attr = data_loader('/Users/penghuizhu/Desktop/Workspace/LocalTestCTGAN/examples/csv/adult.csv')
-
-                    fake = self._generator(fakez, protected_attr)
+                    fake = self._generator(fakez)
                     "fakeact is activated"
                     fakeact = self._apply_activate(fake)
 
@@ -458,7 +404,7 @@ class CTGAN(BaseSynthesizer):
                     m1 = torch.from_numpy(m1).to(self._device)
                     fakez = torch.cat([fakez, c1], dim=1)
 
-                fake = self._generator(fakez, protected_attr)
+                fake = self._generator(fakez)
                 fakeact = self._apply_activate(fake)
 
                 if c1 is not None:
@@ -543,9 +489,7 @@ class CTGAN(BaseSynthesizer):
                 c1 = torch.from_numpy(c1).to(self._device)
                 fakez = torch.cat([fakez, c1], dim=1)
 
-            protected_attr = data_loader('/Users/penghuizhu/Desktop/Workspace/LocalTestCTGAN/examples/csv/adult.csv')
-
-            fake = self._generator(fakez, protected_attr)
+            fake = self._generator(fakez)
             fakeact = self._apply_activate(fake)
             data.append(fakeact.detach().cpu().numpy())
 
@@ -559,3 +503,11 @@ class CTGAN(BaseSynthesizer):
         self._device = device
         if self._generator is not None:
             self._generator.to(self._device)
+
+    def state_dict(self):
+        pass
+
+
+# model = CTGAN()
+# # Save your model
+# torch.save(model, '../FairImprove/model.pth')
