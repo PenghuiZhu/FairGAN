@@ -504,8 +504,7 @@ class CTGAN(BaseSynthesizer):
         if self._generator is not None:
             self._generator.to(self._device)
 
-    def state_dict(self):
-        pass
+
 
 
 # model = CTGAN()

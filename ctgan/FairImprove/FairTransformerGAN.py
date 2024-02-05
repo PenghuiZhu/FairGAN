@@ -108,6 +108,76 @@ print("Reconstruction Loss:", loss.item())
 print("First layer weights size:", decodeVariables['weights'][0].shape)
 print("First layer biases size:", decodeVariables['biases'][0].shape)
 
+class MultiHeadSelfAttention(nn.Module):
+    # Placeholder for the multi-head self-attention mechanism.
+    # Implement this class based on your specific needs or use an existing implementation.
+    def __init__(self, embed_size, heads):
+        super(MultiHeadSelfAttention, self).__init__()
+        # Implementation details here...
+
+    def forward(self, x):
+        # Implementation details here...
+        return x
+
+
+class Generator(nn.Module):
+    def __init__(self, x_dim, y_dim, z_dim, embed_size, heads, output_dim):
+        super(Generator, self).__init__()
+        self.x_dim = x_dim
+        self.y_dim = y_dim
+        self.z_dim = z_dim
+        self.output_dim = output_dim
+
+        # Example linear layer to combine inputs
+        self.combine_inputs = nn.Linear(x_dim + y_dim + z_dim, embed_size)
+
+        # Multi-head self-attention
+        self.attention = MultiHeadSelfAttention(embed_size, heads)
+
+        # Batch normalization
+        self.bn = nn.BatchNorm1d(embed_size, momentum=0.01)
+
+        # Final layer to generate output
+        self.output_layer = nn.Linear(embed_size, output_dim)
+
+    def forward(self, x_input, y_input, z_input, bn_train=True):
+        # Concatenate input tensors
+        combined_input = torch.cat((x_input, y_input, z_input), dim=1)
+
+        # Pass through the initial combination layer
+        x = self.combine_inputs(combined_input)
+
+        # Apply multi-head self-attention
+        x = self.attention(x)
+
+        # Apply batch normalization
+        x = self.bn(x) if bn_train else x
+
+        # Generate output
+        output = self.output_layer(x)
+
+        return output
+
+# Example usage
+x_dim = 10
+y_dim = 1
+z_dim = 1
+embed_size = 128
+heads = 4
+output_dim = 10
+
+generator = Generator(x_dim, y_dim, z_dim, embed_size, heads, output_dim)
+
+# Example tensors
+x_input = torch.randn(32, x_dim)
+y_input = torch.randn(32, y_dim)
+z_input = torch.randn(32, z_dim)
+bn_train = True
+
+output = generator(x_input, y_input, z_input, bn_train)
+print(output.shape)  # Expected shape: [32, output_dim]
+
+
 class Discriminator(nn.Module):
     def __init__(self, input_dim, protected_dim, output_dim=1, hidden_dims=(32, 16)):
         super(Discriminator, self).__init__()

@@ -55,6 +55,7 @@ class Metrics:
         metrics_dict = {"Accuracy": acc, "F1 Score": f1}
         return metrics_dict
 
+
 metrics = Metrics()
 real_data = load_demo()
 # Names of the columns that are discrete
@@ -80,6 +81,17 @@ df_synthetic = synthetic_data  # Your synthetic DataFrame
 df_real = pd.read_csv('/Users/penghuizhu/Desktop/Workspace/FairGAN/examples/csv/adult.csv')  # Your real DataFrame
 protected_attr = 'sex'  # Example protected attribute column name
 target_attr = 'income'  # Example target/outcome column name
+
+def encode_column(df, column_name):
+    """Convert categorical column to numeric codes."""
+    df[column_name] = df[column_name].astype('category').cat.codes
+    return df
+
+# Encode the protected and target attributes
+df_synthetic = encode_column(df_synthetic, protected_attr)
+df_real = encode_column(df_real, protected_attr)
+df_real = encode_column(df_real, target_attr)
+
 
 fairness_metrics = metrics.binary_fair_data_generation_metrics(df_synthetic, protected_attr, target_attr)
 print(fairness_metrics)
