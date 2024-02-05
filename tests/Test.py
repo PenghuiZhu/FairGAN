@@ -43,8 +43,8 @@ p_z = dataset.get_protected_distribution(np_input)
 # get distribution of outcome variable
 p_y = dataset.get_target_distribution(np_input)
 
-input_data_file='data/interim/adult_race_multi.pkl'
-output_file='output/adult_race_fair_trans_gan/'
+input_data_file='/Users/penghuizhu/Desktop/Workspace/FairGAN/ctgan/GeneratedData/processed_data.pkl'
+output_file='/Users/penghuizhu/Desktop/Workspace/FairGAN/ctgan/GeneratedData/adult_race_fair_trans_gan/'
 
 fairTransGAN = FairTransformerGAN(dataType='count',
                                     inputDim=np_input.shape[1] - 2,
@@ -90,26 +90,24 @@ output_gen_z = np.load('data/generated/adult_race_fair_trans_gan_GEN/_z.npy')
 
 output_gen = np.c_[output_gen_z, output_gen_X, output_gen_Y]
 
-output_gen
-
 # resize original data to be the same shape as generated data
 orig_data = orig_data[:-42,]
 print(output_gen.shape == orig_data.shape)
+
 # convert numpy objects to df
 gen_df = pd.DataFrame(output_gen)
 orig_df = pd.DataFrame(orig_data)
+
 # metrics evaluating the generated data
 metrics = Metrics()
-metrics.multi_fair_data_generation_metrics(gen_df)
+
 # train a classifier using our logistic regression model (or use your own classifier) and return classification metrics
 classifier = Classifier()
 TestX, TestY, TestPred = classifier.logistic_regression(gen_df, orig_df)
-# metrics evaluating the classifier trained on the generated data and predicted on the original data
-metrics.multi_fair_classification_metrics(TestX, TestY, TestPred)
+
 # train a classifier using our random forest model (or use your own classifier) and return classification metrics
 TestX_r, TestY_r, TestPred_r = classifier.random_forest(gen_df, orig_df)
-# metrics evaluating the classifier trained on the generated data and predicted on the original data
-metrics.multi_fair_classification_metrics(TestX_r, TestY_r, TestPred_r)
+
 # calculate euclidean distance metric
 metrics.euclidean_distance(gen_df, orig_df)
 

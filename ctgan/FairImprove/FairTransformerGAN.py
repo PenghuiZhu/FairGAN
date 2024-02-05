@@ -375,17 +375,15 @@ def create_z_masks(z_arr):
 
 def train_fair_transformer_gan(
     dataPath,
+    modelPath,
     outPath,
-    nEpochs=100,
-    discriminatorTrainPeriod=1,
+    pretrainEpochs=1,
+    nEpochs=1,
     generatorTrainPeriod=1,
+    discriminatorTrainPeriod=1,
     pretrainBatchSize=100,
     batchSize=100,
-    pretrainEpochs=10,
-    saveMaxKeep=5,
-    p_z=None,
-    p_y=None,
-    modelPath=None
+    saveMaxKeep=0,
 ):
     # Ensure output path exists
     Path(outPath).mkdir(parents=True, exist_ok=True)
@@ -448,15 +446,3 @@ def train_fair_transformer_gan(
 
     print("Training complete.")
 
-# Example usage:
-train_fair_transformer_gan(
-    dataPath='/Users/penghuizhu/Desktop/Workspace/FairGAN/examples/csv/adult.csv',
-    outPath='path/to/save/models/',
-    nEpochs=100,
-    discriminatorTrainPeriod=1,
-    generatorTrainPeriod=1,
-    pretrainBatchSize=100,
-    batchSize=100,
-    pretrainEpochs=10,
-    saveMaxKeep=5
-)
